@@ -79,6 +79,8 @@ CloudCompareで使用する場合は、PCD pluginの有無に影響されないP
 --partitions N           Voxel処理用の一時ディスク分割数（既定: 256）
 --temp-dir DIR           一時ファイルの保存先
 --every-nth-frame N      Nフレームごとに処理
+--start-offset SECONDS   最初の点群から指定秒後に処理開始（既定: 0）
+--end-offset SECONDS     最初の点群から指定秒後に処理終了
 --max-tf-gap SECONDS     TF補外を許容する最大時間（既定: 0.5）
 --force                  既存の出力ファイルを上書き
 ```

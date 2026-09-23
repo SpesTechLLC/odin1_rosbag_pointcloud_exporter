@@ -476,6 +476,7 @@ def export(args: argparse.Namespace) -> Tuple[int, int, str]:
     cloud_class = get_message(types[args.topic])
     tf_archive: Optional[TfArchive] = None
     discovered_source: Optional[str] = None
+    first_cloud_stamp_ns: Optional[int] = None
     max_gap_ns = int(args.max_tf_gap * 1e9)
     writer = create_writer(output_path)
     frames = 0
@@ -494,11 +495,26 @@ def export(args: argparse.Namespace) -> Tuple[int, int, str]:
         message_index = 0
         while reader.has_next():
             _, data, _ = reader.read_next()
+            msg = deserialize_message(data, cloud_class)
+            current_stamp_ns = stamp_ns(msg.header.stamp)
+            if first_cloud_stamp_ns is None:
+                first_cloud_stamp_ns = current_stamp_ns
+            elapsed_ns = current_stamp_ns - first_cloud_stamp_ns
+            if elapsed_ns < int(args.start_offset * 1e9):
+                continue
+            if (
+                args.end_offset is not None
+                and elapsed_ns > int(args.end_offset * 1e9)
+            ):
+                print(
+                    f"Reached end offset {args.end_offset:g}s after {frames} frames.",
+                    flush=True,
+                )
+                break
             if message_index % args.every_nth_frame:
                 message_index += 1
                 continue
             message_index += 1
-            msg = deserialize_message(data, cloud_class)
             source = normalize_frame(msg.header.frame_id)
             if not source:
                 raise RuntimeError("PointCloud2 has an empty frame_id")
@@ -565,6 +581,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--temp-dir", type=Path, help="temporary data parent directory")
     parser.add_argument("--every-nth-frame", type=int, default=1, help="process every Nth cloud")
+    parser.add_argument(
+        "--start-offset",
+        type=float,
+        default=0.0,
+        help="start this many seconds after the first cloud timestamp (default: 0)",
+    )
+    parser.add_argument(
+        "--end-offset",
+        type=float,
+        help="stop after this many seconds from the first cloud timestamp",
+    )
     parser.add_argument("--max-tf-gap", type=float, default=0.5, help="maximum TF extrapolation in seconds")
     parser.add_argument("--progress-every", type=int, default=100, help="progress interval in frames")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output")
@@ -578,6 +605,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         parser.error("--partitions must be >= 1")
     if args.every_nth_frame < 1 or args.progress_every < 1:
         parser.error("frame intervals must be >= 1")
+    if args.start_offset < 0:
+        parser.error("--start-offset must be >= 0")
+    if args.end_offset is not None and args.end_offset <= 0:
+        parser.error("--end-offset must be > 0")
+    if args.end_offset is not None and args.end_offset <= args.start_offset:
+        parser.error("--end-offset must be greater than --start-offset")
     return args
 
 
